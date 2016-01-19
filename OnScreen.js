@@ -18,7 +18,7 @@ function OnScreen(options) {
 	};
 
 	if (self.options.scroll) {
-		[].forEach.call(self.options.scrollContainer, function(container) {
+		[].forEach.call(self.options.scrollContainer, function (container) {
 			container.addEventListener('scroll', update);
 		});
 	}
@@ -67,7 +67,7 @@ function OnScreen(options) {
 						return
 					}
 
-					classes.forEach(function(item){
+					classes.forEach(function (item) {
 						element.classList.remove(item);
 					});
 
@@ -87,8 +87,8 @@ function OnScreen(options) {
 						(options.onScreenLeave && options.onScreenLeave.call(element, detail) === false)) {
 						return;
 					}
-					
-					classes.forEach(function(item){
+
+					classes.forEach(function (item) {
 						element.classList.remove(item);
 					});
 
@@ -99,7 +99,7 @@ function OnScreen(options) {
 
 			// Screen Move
 			if (!options.disableScreenMove && (isOnScreen || options.fireScreenMoveOffScreen)) {
-				
+
 				if (!dispatchEvent(element, 'screenmove', detail) ||
 					(options.onScreenMove && options.onScreenMove.call(element, detail) === false)) {
 					return;
@@ -143,7 +143,7 @@ function OnScreen(options) {
 			inside: {
 				top: offsetTop / insideHeight,
 				right: offsetRight / insideWidth,
-				bottom: offsetBottom /insideHeight,
+				bottom: offsetBottom / insideHeight,
 				left: offsetLeft / insideWidth
 			},
 
@@ -190,14 +190,15 @@ function OnScreen(options) {
 	function getModifiedRect(rect, mods) {
 		var width = rect.width || (rect.right - rect.left);
 		var height = rect.height || (rect.bottom - rect.top);
+		var ranges = [width, height];
 		var modRect = {};
 
 		mods = mods || {};
 
-		modRect.top = rect.top + (mods.top ? getModifierValue(mods.top, height) : 0);
-		modRect.right = rect.right - (mods.right ? getModifierValue(mods.right, width) : 0);
-		modRect.bottom = rect.bottom - (mods.bottom ? getModifierValue(mods.bottom, height) : 0);
-		modRect.left = rect.left + (mods.left ? getModifierValue(mods.left, width) : 0);
+		modRect.top = rect.top + (mods.top ? getModifierValue(mods.top, getModifierRange(mods.top, ranges, 1)) : 0);
+		modRect.left = rect.left + (mods.left ? getModifierValue(mods.left, getModifierRange(mods.left, ranges, 0)) : 0);
+		modRect.right = mods.width ? modRect.left + getModifierValue(mods.width, getModifierRange(mods.width, ranges, 0)) : rect.right - (mods.right ? getModifierValue(mods.right, getModifierRange(mods.right, ranges, 0)) : 0);
+		modRect.bottom = mods.height ? modRect.top + getModifierValue(mods.height, getModifierRange(mods.height, ranges, 1)) : rect.bottom - (mods.bottom ? getModifierValue(mods.bottom, getModifierRange(mods.bottom, ranges, 1)) : 0);
 
 		modRect.width = modRect.right - modRect.left;
 		modRect.height = modRect.bottom - modRect.top;
@@ -206,8 +207,13 @@ function OnScreen(options) {
 	}
 
 
+	function getModifierRange(modifier, ranges, def) {
+		return { 'vw': ranges[0], 'vh': ranges[1] }[modifier.match(/vw|vh|$/)[0]] || ranges[def];
+	}
+
+
 	function getModifierValue(modifier, range) {
-		return /\d%$/.test(modifier) ? (parseFloat(modifier) / 100) * range : parseFloat(modifier || 0);
+		return /\d(%|vw|vh)$/.test(modifier) ? (parseFloat(modifier) / 100) * range : parseFloat(modifier || 0);
 	}
 
 
@@ -233,7 +239,7 @@ function OnScreen(options) {
 	function mergeObjects() {
 		var destination = {};
 
-		[].forEach.call(arguments, function(source) {
+		[].forEach.call(arguments, function (source) {
 			for (var property in source) {
 				if (source.hasOwnProperty(property)) {
 					if (source[property] && {}.toString.call(source[property]) === '[object Object]') {
@@ -249,7 +255,7 @@ function OnScreen(options) {
 	};
 }
 
-OnScreen.prototype.addItem = function(element, options) {
+OnScreen.prototype.addItem = function (element, options) {
 	var defaults = {
 		screen: { top: 0, right: 0, bottom: 0, left: 0 },
 		target: { top: 0, right: 0, bottom: 0, left: 0 },
@@ -269,7 +275,7 @@ OnScreen.prototype.addItem = function(element, options) {
 	return this.items[index];
 };
 
-OnScreen.prototype.updateItem = function(element, options) {
+OnScreen.prototype.updateItem = function (element, options) {
 	var index = parseInt(this.map[element]);
 	if (index >= 0 && index < this.items.length && this.items[index]) {
 		this.items[index].options = this.util.mergeObjects(this.items[index].options, options || {});
@@ -278,7 +284,7 @@ OnScreen.prototype.updateItem = function(element, options) {
 	return this.items[index];
 };
 
-OnScreen.prototype.removeItem = function(element) {
+OnScreen.prototype.removeItem = function (element) {
 	var index = parseInt(this.map[element]);
 	if (index >= 0 && index < this.items.length) {
 		this.items.splice(index, 1);
@@ -287,16 +293,16 @@ OnScreen.prototype.removeItem = function(element) {
 	}
 };
 
-OnScreen.prototype.empty = function() {
+OnScreen.prototype.empty = function () {
 	this.items = [];
 	this.map = {};
 };
 
-OnScreen.prototype.dispose = function() {
+OnScreen.prototype.dispose = function () {
 	this.empty();
 
 	if (this.options.scroll) {
-		this.options.scrollContainer.forEach(function(container) {
+		this.options.scrollContainer.forEach(function (container) {
 			container.removeEventListener('scroll', this.update);
 		}, this);
 	}
@@ -309,4 +315,3 @@ OnScreen.prototype.dispose = function() {
 		window.removeEventListener('load', this.update);
 	}
 };
-
