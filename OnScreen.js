@@ -1,78 +1,151 @@
-function OnScreen(options) {
-	var self = this;
-
+window.OnScreen = (function(){
+	'use strict';
+	
+	var animf = null;
+	var events = {};
+	var items = {};
 	var defaults = {
-		scrollContainer: [document.body, document.documentElement, window],
-		scroll: true,
-		resize: true,
-		load: true
+		screen: { top: 0, right: 0, bottom: 0, left: 0 },
+		target: { top: 0, right: 0, bottom: 0, left: 0 },
+		screenEnterClass: 'js-screenenter',
+		screenLeaveClass: 'js-screenleave',
+		onScreenEnter: null,
+		onScreenLeave: null,
+		onScreenMove: null,
+		disableScreenMoveOffScreen: true,
+		disableScreenMove: false
 	};
+	
+	function OnScreen(config) {
+		
+		config = extend({}, defaults, config);
+		
+		if (document.readyState === 'complete') {
+			init();
+		}
+		else {
+			document.addEventListener('DOMContentLoaded', init);
+		} 
+		
+		function init() {
+			var scroll = typeof config.scroll === 'string' && config.scroll;
+			var target = !scroll ? (config.scroll = scroll = 'window') && window : document.querySelector(scroll);
+			
+			if (target) {
+				
+				if (!events[scroll]) {
+					events[scroll] = [target, function(){ update(scroll); }];
+					target.addEventListener('scroll', events[scroll][1]);
+		
+					window.addEventListener('resize', events[scroll][1]);
+					window.addEventListener('load', events[scroll][1]);
+				}
+				
+				if (!items[scroll]) {
+					items[scroll] = [config];
+				}
+				else {
+					items[scroll][items[scroll].length] = config;
+				}
+				
+				update(scroll);
+			}
+			
+			config.element = typeof config.element === 'string' ? document.querySelector(config.element) : config.element;
 
-	self.options = mergeObjects(defaults, options || {});
-	self.animFrame = null;
-	self.items = [];
-	self.map = {};
-	self.update = update;
-	self.util = {
-		mergeObjects: mergeObjects
+			config.disable = function(){
+				var index = items[config.scroll].indexOf(config);
+					
+				if (index > -1) {
+					items[config.scroll].splice(index, 1);
+				}
+				
+				return config;
+			}
+			
+			config.enable = function(){
+				if (!items[config.scroll]) {
+					items[config.scroll] = [config];
+				}
+				else {
+					items[config.scroll][items[config.scroll].length] = config;
+				}
+				
+				return config;
+			}
+		}
+		
+		return config;
+	}
+	
+	
+	OnScreen.events = events;
+	OnScreen.items = items;
+	OnScreen.empty = function (scroll) {
+		if (scroll) {
+			if (items[scroll]) {
+				items[scroll] = null;
+				delete items[scroll];
+			}
+			
+			if (events[scroll]) {
+				events[scroll][0].removeEventListener('scroll', events[scroll][1]);
+				window.removeEventListener('resize', events[scroll][1]);
+				window.removeEventListener('load', events[scroll][1]);
+				events[scroll] = null;
+				delete events[scroll];
+			}
+		}
+		else {
+			for (var property in items) {
+				if (items.hasOwnProperty(property)) {
+					OnScreen.empty(property);
+				}
+			}
+		}
 	};
-
-	if (self.options.scroll) {
-		[].forEach.call(self.options.scrollContainer, function (container) {
-			container.addEventListener('scroll', update);
-		});
-	}
-
-	if (self.options.resize) {
-		window.addEventListener('resize', update);
-	}
-
-	if (self.options.load) {
-		window.addEventListener('load', update);
-	}
-
-
-	function update() {
-		if (!self.animFrame && self.items.length) {
-			self.animFrame = requestAnimationFrame(process);
+	
+	
+	function update(scroll) {
+		if (items[scroll].length && !animf) {
+			animf = requestAnimationFrame(function() { process(items[scroll]); });
 		}
 	}
+	
+	
+	function process(items) {
+		animf = null;
+			
+		items.forEach(function (config) {
+			
+			var element = config.element;
 
+			var sideBefore = config.side;
+			var isOnScreen = check(config);
+			var sideAfter = config.side;
+			var offset = config.offset;
+			var detail = { side: isOnScreen ? sideBefore || '' : sideAfter || '', offset: offset, data: config.data };
 
-	function process() {
-		self.animFrame = null;
-
-		self.items.forEach(function (item) {
-
-			var element = item.element;
-			var options = item.options;
-
-			var sideBefore = item.side;
-			var isOnScreen = check(item);
-			var sideAfter = item.side;
-			var offset = item.offset;
-			var detail = { side: isOnScreen ? sideBefore : sideAfter, offset: offset, data: options.data };
-
-			var classes = element.getAttribute('class').match(new RegExp('\\b(' + options.screenEnterClass + '|' + options.screenLeaveClass + ')(-(-(top|bottom|left|right)){0,2})*', 'g')) || [];
+			var classes = (element.getAttribute('class') || '').match(new RegExp('\\b(' + config.screenEnterClass + '|' + config.screenLeaveClass + ')(-(-(top|bottom|left|right)){0,2})*', 'g')) || [];
 
 			// Screen Enter
 			if (isOnScreen) {
 
 				// make sure to only fire once
-				if (!item.onscreen) {
-					item.onscreen = true;
+				if (!config.onscreen) {
+					config.onscreen = true;
 
 					if (!dispatchEvent(element, 'screenenter', detail) ||
-						(options.onScreenEnter && options.onScreenEnter.call(element, detail) === false)) {
+						(config.onScreenEnter && config.onScreenEnter.call(element, detail) === false)) {
 						return
 					}
 
-					classes.forEach(function (item) {
-						element.classList.remove(item);
+					classes.forEach(function (className) {
+						element.classList.remove(className);
 					});
 
-					element.classList.add(options.screenEnterClass);
-					element.classList.add(options.screenEnterClass + '--' + sideBefore);
+					element.classList.add(config.screenEnterClass);
+					if (sideBefore) element.classList.add(config.screenEnterClass + '--' + sideBefore);
 				}
 			}
 
@@ -80,37 +153,39 @@ function OnScreen(options) {
 			else {
 
 				// make sure to only fire once
-				if (item.onscreen) {
-					item.onscreen = false;
+				if (config.onscreen) {
+					config.onscreen = false;
 
 					if (!dispatchEvent(element, 'screenleave', detail) ||
-						(options.onScreenLeave && options.onScreenLeave.call(element, detail) === false)) {
+						(config.onScreenLeave && config.onScreenLeave.call(element, detail) === false)) {
 						return;
 					}
 
-					classes.forEach(function (item) {
-						element.classList.remove(item);
+					classes.forEach(function (className) {
+						element.classList.remove(className);
 					});
 
-					element.classList.add(options.screenLeaveClass);
-					element.classList.add(options.screenLeaveClass + '--' + sideAfter);
+					element.classList.add(config.screenLeaveClass);
+					if (sideAfter) element.classList.add(config.screenLeaveClass + '--' + sideAfter);
 				}
 			}
 
 			// Screen Move
-			if (!options.disableScreenMove && (isOnScreen || options.fireScreenMoveOffScreen)) {
+			if (!config.disableScreenMove && (isOnScreen || !config.disableScreenMoveOffScreen)) {
 
 				if (!dispatchEvent(element, 'screenmove', detail) ||
-					(options.onScreenMove && options.onScreenMove.call(element, detail) === false)) {
+					(config.onScreenMove && config.onScreenMove.call(element, detail) === false)) {
 					return;
 				}
 			}
+			
 		});
 	}
-
-
-	function check(item) {
-		var targetBounds = item.element.getBoundingClientRect(),
+	
+	
+	function check(config) {
+		
+		var targetBounds = config.element.getBoundingClientRect(),
 			screenBounds = {
 				top: 0,
 				right: window.innerWidth,
@@ -120,8 +195,8 @@ function OnScreen(options) {
 				height: window.innerHeight
 			};
 
-		var targetRect = getModifiedRect(targetBounds, item.options.target),
-			screenRect = getModifiedRect(screenBounds, item.options.screen);
+		var targetRect = getModifiedRect(targetBounds, config.target),
+			screenRect = getModifiedRect(screenBounds, config.screen);
 
 		var offsetTop = targetRect.top - screenRect.top,
 			offsetRight = screenRect.right - targetRect.right,
@@ -135,23 +210,23 @@ function OnScreen(options) {
 			outsideWidth = screenRect.width + targetRect.width;
 
 		var offset = {
-			top: offsetTop / screenRect.height,
-			right: offsetRight / screenRect.width,
-			bottom: offsetBottom / screenRect.height,
-			left: offsetLeft / screenRect.width,
+			top: offsetTop / screenRect.height || 0,
+			right: offsetRight / screenRect.width || 0,
+			bottom: offsetBottom / screenRect.height || 0,
+			left: offsetLeft / screenRect.width || 0,
 
 			inside: {
-				top: offsetTop / insideHeight,
-				right: offsetRight / insideWidth,
-				bottom: offsetBottom / insideHeight,
-				left: offsetLeft / insideWidth
+				top: offsetTop / insideHeight || 0,
+				right: offsetRight / insideWidth || 0,
+				bottom: offsetBottom / insideHeight || 0,
+				left: offsetLeft / insideWidth || 0
 			},
 
 			outside: {
-				top: (targetRect.bottom - screenRect.top) / outsideHeight,
-				right: (screenRect.right - targetRect.left) / outsideWidth,
-				bottom: (screenRect.bottom - targetRect.top) / outsideHeight,
-				left: (targetRect.right - screenRect.left) / outsideWidth
+				top: (targetRect.bottom - screenRect.top) / outsideHeight || 0,
+				right: (screenRect.right - targetRect.left) / outsideWidth || 0,
+				bottom: (screenRect.bottom - targetRect.top) / outsideHeight || 0,
+				left: (targetRect.right - screenRect.left) / outsideWidth || 0
 			}
 		};
 
@@ -174,11 +249,11 @@ function OnScreen(options) {
 		}
 
 		// set offset
-		item.offset = offset;
+		config.offset = offset;
 
 		// set side and return visibility
 		if (side.length) {
-			item.side = side.join('-');
+			config.side = side.join('-');
 			return false;
 		}
 		else {
@@ -205,8 +280,8 @@ function OnScreen(options) {
 
 		return modRect;
 	}
-
-
+	
+	
 	function getModifierRange(modifier, ranges, def) {
 		return { 'vw': ranges[0], 'vh': ranges[1] }[modifier.match(/vw|vh|$/)[0]] || ranges[def];
 	}
@@ -215,8 +290,8 @@ function OnScreen(options) {
 	function getModifierValue(modifier, range) {
 		return /\d(%|vw|vh)$/.test(modifier) ? (parseFloat(modifier) / 100) * range : parseFloat(modifier || 0);
 	}
-
-
+	
+	
 	function dispatchEvent(element, name, data) {
 		var event;
 
@@ -234,84 +309,25 @@ function OnScreen(options) {
 
 		return !!element.dispatchEvent(event);
 	}
-
-
-	function mergeObjects() {
-		var destination = {};
-
-		[].forEach.call(arguments, function (source) {
+	
+	
+	function extend(target) {
+		target = target || {};
+		
+		[].slice.call(arguments, 1).forEach(function (source) {
 			for (var property in source) {
 				if (source.hasOwnProperty(property)) {
-					if (source[property] && {}.toString.call(source[property]) === '[object Object]') {
-						destination[property] = mergeObjects(destination[property] || {}, source[property]);
+					if ({}.toString.call(source[property]) === '[object Object]') {
+						target[property] = extend(target[property] || {}, source[property]);
 					} else {
-						destination[property] = source[property];
+						target[property] = source[property];
 					}
 				}
 			}
 		});
-
-		return destination;
-	};
-}
-
-OnScreen.prototype.addItem = function (element, options) {
-	var defaults = {
-		screen: { top: 0, right: 0, bottom: 0, left: 0 },
-		target: { top: 0, right: 0, bottom: 0, left: 0 },
-		screenEnterClass: 'js-screenenter',
-		screenLeaveClass: 'js-screenleave',
-		onScreenEnter: null,
-		onScreenLeave: null,
-		onScreenMove: null,
-		fireScreenMoveOffScreen: false,
-		disableScreenMove: false
-	};
-
-	var index = this.items.length;
-	this.items[index] = { element: element, options: this.util.mergeObjects(defaults, options || {}), onscreen: false, side: 'bottom' };
-	this.map[element] = index;
-
-	return this.items[index];
-};
-
-OnScreen.prototype.updateItem = function (element, options) {
-	var index = parseInt(this.map[element]);
-	if (index >= 0 && index < this.items.length && this.items[index]) {
-		this.items[index].options = this.util.mergeObjects(this.items[index].options, options || {});
+		
+		return target;
 	}
-
-	return this.items[index];
-};
-
-OnScreen.prototype.removeItem = function (element) {
-	var index = parseInt(this.map[element]);
-	if (index >= 0 && index < this.items.length) {
-		this.items.splice(index, 1);
-		this.map[element] = null;
-		delete this.map[element];
-	}
-};
-
-OnScreen.prototype.empty = function () {
-	this.items = [];
-	this.map = {};
-};
-
-OnScreen.prototype.dispose = function () {
-	this.empty();
-
-	if (this.options.scroll) {
-		this.options.scrollContainer.forEach(function (container) {
-			container.removeEventListener('scroll', this.update);
-		}, this);
-	}
-
-	if (this.options.resize) {
-		window.removeEventListener('resize', this.update);
-	}
-
-	if (this.options.load) {
-		window.removeEventListener('load', this.update);
-	}
-};
+	
+	return OnScreen;
+}());
