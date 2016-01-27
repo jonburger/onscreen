@@ -1,8 +1,8 @@
 window.OnScreen = (function(){
 	'use strict';
 	
-	var animf = null;
 	var events = {};
+	var anims = {};
 	var items = {};
 	var defaults = {
 		screen: { top: 0, right: 0, bottom: 0, left: 0 },
@@ -31,26 +31,23 @@ window.OnScreen = (function(){
 			var scroll = typeof config.scroll === 'string' && config.scroll;
 			var target = !scroll ? (config.scroll = scroll = 'window') && window : document.querySelector(scroll);
 			
-			if (target) {
+			if (!target) return Error('Cannot init target "' + scroll + '"');
 				
-				if (!events[scroll]) {
-					events[scroll] = [target, function(){ update(scroll); }];
-					target.addEventListener('scroll', events[scroll][1]);
-		
-					window.addEventListener('resize', events[scroll][1]);
-					window.addEventListener('load', events[scroll][1]);
-				}
-				
-				if (!items[scroll]) {
-					items[scroll] = [config];
-				}
-				else {
-					items[scroll][items[scroll].length] = config;
-				}
-				
-				update(scroll);
+			if (!events[scroll]) {
+				events[scroll] = [target, function(){ update(scroll); }];
+				target.addEventListener('scroll', events[scroll][1]);
+	
+				window.addEventListener('resize', events[scroll][1]);
+				window.addEventListener('load', events[scroll][1]);
 			}
 			
+			if (!items[scroll]) {
+				items[scroll] = [config];
+			}
+			else {
+				items[scroll][items[scroll].length] = config;
+			}
+				
 			config.element = typeof config.element === 'string' ? document.querySelector(config.element) : config.element;
 
 			config.disable = function(){
@@ -73,21 +70,22 @@ window.OnScreen = (function(){
 				
 				return config;
 			}
+			
+			update(scroll);
 		}
 		
 		return config;
 	}
 	
 	
+	OnScreen.update = update;
 	OnScreen.events = events;
 	OnScreen.items = items;
-	OnScreen.empty = function (scroll) {
+	OnScreen.empty = empty;
+	
+	
+	function empty(scroll) {
 		if (scroll) {
-			if (items[scroll]) {
-				items[scroll] = null;
-				delete items[scroll];
-			}
-			
 			if (events[scroll]) {
 				events[scroll][0].removeEventListener('scroll', events[scroll][1]);
 				window.removeEventListener('resize', events[scroll][1]);
@@ -95,27 +93,36 @@ window.OnScreen = (function(){
 				events[scroll] = null;
 				delete events[scroll];
 			}
-		}
-		else {
-			for (var property in items) {
-				if (items.hasOwnProperty(property)) {
-					OnScreen.empty(property);
-				}
+			
+			if (anims[scroll] !== undefined) {
+				anims[scroll] = null;
+				delete anims[scroll];
+			}
+			
+			if (items[scroll]) {
+				items[scroll] = null;
+				delete items[scroll];
 			}
 		}
-	};
+		else {
+			Object.keys(items).forEach(empty);
+		}
+	}
 	
 	
 	function update(scroll) {
-		if (items[scroll].length && !animf) {
-			animf = requestAnimationFrame(function() { process(items[scroll]); });
+		if (scroll) {
+			if (items[scroll] && !anims[scroll] && items[scroll].length) {
+				anims[scroll] = requestAnimationFrame(function() { anims[scroll] = null; process(items[scroll]); });
+			}
+		}
+		else {
+			Object.keys(items).forEach(update);
 		}
 	}
 	
 	
 	function process(items) {
-		animf = null;
-			
 		items.forEach(function (config) {
 			
 			var element = config.element;
@@ -328,6 +335,7 @@ window.OnScreen = (function(){
 		
 		return target;
 	}
+	
 	
 	return OnScreen;
 }());
